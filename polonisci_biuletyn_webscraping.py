@@ -31,7 +31,7 @@ while page_no <= max_page:
     url = f"https://biuletynpolonistyczny.pl/pl/people/?csrfmiddlewaretoken=gNmwp8C0klFn8RDbqnxZPQl6eo3WmDYB&person_first_name=&person_last_name=&person_disciplines=&person_institutions__institution_city__country=1&o=-person_date_add&per_page=90&page={page_no}"
     r = requests.get(url).content
     soup = BeautifulSoup(r, 'lxml')
-    result = [(t.text.strip(), l['href']) for t, l in zip(soup.select('b'), soup.select('.list__cols'))]
+    result = [(t.text.strip(), f"https://biuletynpolonistyczny.pl{l['href']}") for t, l in zip(soup.select('b'), soup.select('.list__cols'))]
     list_of_people.extend(result)
     page_no += 1
 
@@ -40,6 +40,44 @@ df.to_excel('polonisci_biuletyn_linki.xlsx', index=False)
 
 
 
+people_dict = {}
+for person_info in tqdm(list_of_people):
+# def harvest_biuletyn(person_info):
+    person, url = person_info
+    r = requests.get(url).content
+    soup = BeautifulSoup(r, 'lxml')
+    if soup.select_one('small'):
+        stopien = soup.select_one('small').text.strip()
+        osoba = soup.select_one('.details__text--title').text.replace(stopien, '').strip()
+    else: 
+        stopien = None
+        try:
+            osoba = soup.select_one('.details__text--title').text.strip()
+        except AttributeError:
+            print(person_info)
+    afiliacje = [e.text for e in soup.select('.details__people--left .details__text--bold')]
+    if soup.select_one('.details__text--anchor-opi'):
+        opi_id = soup.select_one('.details__text--anchor-opi').text.strip()
+        opi_link = soup.select_one('.details__text--anchor-opi')['href']
+    else: opi_id, opi_link = None, None
+    temp_dict = {person:{'name': osoba,
+                         'digree': stopien,
+                         'affiliation': afiliacje,
+                         'opi_id': opi_id,
+                         'opi_link': opi_link}}
+    people_dict.update(temp_dict)
+
+institutions = set([e for sub in [v.get('affiliation') for k,v in people_dict.items() if isinstance(v.get('affiliation'),list)] for e in sub])
+
+df = pd.DataFrame().from_dict(people_dict, orient='index')
+df.to_excel('polonisci_biuletyn.xlsx')
+
+df_i = pd.DataFrame(institutions, columns=['name'])
+df_i.to_excel('polonisci_biuletyn_instytucje.xlsx')
+
+# people_dict = {}
+# with ThreadPoolExecutor() as executor:
+#     list(tqdm(executor.map(harvest_biuletyn,list_of_people), total=len(list_of_people)))
 
 
 #%% notatki
