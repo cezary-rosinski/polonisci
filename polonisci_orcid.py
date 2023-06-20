@@ -3,7 +3,7 @@ from tqdm import tqdm
 import sys
 sys.path.insert(1, 'C:/Users/Cezary/Documents/IBL-PAN-Python')
 
-
+#%%
 
 #orcid
 
@@ -53,6 +53,8 @@ for result in response2:
     
     
 #polon
+disciplin = 'językoznawstwo'
+disciplin = 'literaturoznawstwo'
 list_data = {}    
 def get_names(url):
     global list_data
@@ -70,12 +72,12 @@ def get_names(url):
     try:
         token = response.json()['pagination']['token']
         
-        get_names(f'https://radon.nauka.gov.pl/opendata/polon/employees?resultNumbers=100&disciplineName=językoznawstwo&penaltyMarker=false&token={token}')
+        get_names(f'https://radon.nauka.gov.pl/opendata/polon/employees?resultNumbers=100&disciplineName=literaturoznawstwo&penaltyMarker=false&token={token}')
     except KeyError:
         pass
     return
 
-get_names('https://radon.nauka.gov.pl/opendata/polon/employees?resultNumbers=100&disciplineName=językoznawstwo&penaltyMarker=false')
+get_names('https://radon.nauka.gov.pl/opendata/polon/employees?resultNumbers=100&disciplineName=literaturoznawstwo&penaltyMarker=false')
     
     
 #pomysł --> wyszukać zidentyfikowane instytucje w serwisie nauka-polska i tę listę wyposażyć w identyfikatory orcid i inne identyfikatory https://nauka-polska.pl/#/results?_k=d1k0vj
