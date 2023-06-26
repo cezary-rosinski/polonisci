@@ -5,6 +5,7 @@ sys.path.insert(1, 'C:/Users/Cezary/Documents/IBL-PAN-Python')
 import pandas as pd
 import json
 from concurrent.futures import ThreadPoolExecutor
+import regex as re
 
 #%%def
 # list_data = {}    
@@ -100,9 +101,20 @@ for k,v in tqdm(radon_response.items()):
         for e in v:
             if e.get('professionalTitles'):
                 for el in e.get('professionalTitles'):
-                    if el.get('fieldName') and el.get('fieldName').strip() == 'filologia polska' and el.get('professionalTitleName').strip() == 'Magister':
+                    # if el.get('fieldName') and el.get('fieldName').strip() == 'filologia polska' and el.get('professionalTitleName').strip() == 'Magister': #1 podejście
+                    # if el.get('fieldName') and 'filologia polska' in el.get('fieldName').strip() and el.get('professionalTitleName').strip() == 'Magister': #2 podejście
+                    if el.get('fieldName') and re.findall('filolog.+? polsk', el.get('fieldName')) and el.get('professionalTitleName').strip() == 'Magister': #3 podejście
                         ok.update({k:v})
-            
+
+#len(ok) --> 1527 vs. 1537
+#dyscyplina polonistyka
+polonisci_z_dyscyplina = list(dyscypliny_response.get('polonistyka').keys())
+for pol in polonisci_z_dyscyplina:
+    if pol not in ok:
+        ok.update({pol:radon_response.get(pol)})
+#len(ok) --> 1571 vs. 1581
+
+#UWAGA --> 'filologia polska' != 'fieldName, ale 'filologia polska' in 'fieldName'
 
 academic_degrees_disciplines = set()
 for k,v in tqdm(radon_response.items()):
@@ -178,7 +190,15 @@ for k,v in tqdm(radon_response.items()):
  '23166ED5171C01F390586D26B3661BB2054D9106': [],
  'A8D6587863BE6DD4D701C4660EB1C9F4334806E7': []}
 
-#%%testy
+#%% notatki
+first_name, last_name = 'Ewa Szczepan'.split(' ')
+radon_response.get(''.join({tuple([ka for ka,va in v.items() if va.get('firstName') == first_name and va.get('lastName') == last_name]) for k,v in dyscypliny_response.items() if any(va.get('firstName') == first_name and va.get('lastName') == last_name for va in v.values())}))
+
+{k:v for k,v in radon_response.items() if v and v[0].get('personalData').get('lastName') == last_name and v[0].get('personalData').get('firstName') == first_name}
+
+{k:[e.get('institutionName') for e in v[0].get('employments')] for k,v in radon_response.items() if k in polonisci_z_dyscyplina}
+
+#%%stare
 
 #orcid
 
