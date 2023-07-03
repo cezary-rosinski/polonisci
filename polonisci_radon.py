@@ -91,9 +91,9 @@ with open('osoby_radon_response.json', 'w') as outfile:
 with open('osoby_radon_response.json', 'r') as f:
     radon_response = json.load(f) 
 
-test = radon_response.get(list(radon_response.keys())[0])
+# test = radon_response.get(list(radon_response.keys())[0])
 
-ttt = {k:v for k,v in radon_response.items() if v[0].get('professionalTitles') and any(e.get('fieldName').strip() == 'filologia polska' for e in v[0].get('professionalTitles'))}
+# ttt = {k:v for k,v in radon_response.items() if v[0].get('professionalTitles') and any(e.get('fieldName').strip() == 'filologia polska' for e in v[0].get('professionalTitles'))}
 
 ok = {}
 for k,v in tqdm(radon_response.items()):
@@ -114,8 +114,45 @@ for pol in polonisci_z_dyscyplina:
         ok.update({pol:radon_response.get(pol)})
 #len(ok) --> 1571 vs. 1581
 
-#UWAGA --> 'filologia polska' != 'fieldName, ale 'filologia polska' in 'fieldName'
 
+# # nie dajemy dyscyplin z dr
+# test = {}
+# for k,v in tqdm(radon_response.items()):
+#     if v:
+#         for e in v:
+#             if e.get('academicDegrees'):
+#                 for el in e.get('academicDegrees'):
+#                     if el.get('disciplineName') and any(ele in el.get('disciplineName') for ele in ['ęzykoznawstwo polskie', 'językowznawstwo-językoznawstwo polskie', 'językoznawstwo polskie', 'literaturoznawstwo polskie']):
+#                         test.update({k:v})
+    
+#tabela
+tabela = pd.DataFrame()
+for k,v in tqdm(ok.items()):
+    # k = '0A0EB8DA133481808A37A957AE3C542F61CEF334'
+    # v = ok.get(k)
+    for e in v:
+        # e = v[0]
+        a = pd.DataFrame([{ka:va for ka,va in el.items() if ka in ['professionalTitleName', 'fieldName', 'institutionName', 'graduationYear']} for el in e.get('professionalTitles')])
+        b = pd.DataFrame([{ka:va for ka,va in e.get('personalData').items() if ka in ['firstName', 'middleName', 'lastName']}])
+        b['calculatedEduLevel'] = e.get('calculatedEduLevel')
+        c = pd.DataFrame()
+        for el in [{ka:[{kb:vb for kb,vb in ele.items() if kb in ['firstDisciplineName', 'secondDisciplineName']} for ele in va] if ka == 'declaredDisciplines' else va for ka,va in el.items() if ka in ['institutionName', 'declaredDisciplines']} for el in e.get('employments')]:
+            test_df = pd.DataFrame(el.get('declaredDisciplines'))
+            test_df['institutionNameForDiscipline'] = el.get('institutionName')
+            c = pd.concat([c, test_df])
+        c = c[['institutionNameForDiscipline', 'firstDisciplineName', 'secondDisciplineName']].reset_index(drop='True')
+        d = pd.DataFrame([{ka:va for ka,va in el.items() if ka in ['academicDegreeName', 'disciplineName', 'fieldName', 'grantingYear', 'institutionName']} for el in e.get('academicDegrees')])
+        d.rename(columns={'fieldName': 'fieldNameDegree', 'institutionName': 'institutionNameDegree'}, inplace=True)
+        iter_df = pd.concat([b, a], axis=1, join='outer')
+        iter_df = pd.concat([iter_df, c], axis=1, join='outer')
+        iter_df = pd.concat([iter_df, d], axis=1, join='outer')
+        iter_df.insert(0,'id',k)
+        tabela = pd.concat([tabela, iter_df])
+        
+tabela.to_excel('poloniści_do_sprawdzenia.xlsx', index=False)        
+        
+
+#%%
 academic_degrees_disciplines = set()
 for k,v in tqdm(radon_response.items()):
     if v:
