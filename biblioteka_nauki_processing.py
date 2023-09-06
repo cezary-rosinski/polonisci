@@ -5,9 +5,17 @@ import sys
 sys.path.insert(1, 'C:/Users/Cezary/Documents/IBL-PAN-Python')
 from my_functions import gsheet_to_df
 import pickle
+import Levenshtein as lev
+import pandas as pd
+import requests
+from concurrent.futures import ThreadPoolExecutor
 
 
 #%%
+
+##ograniczamy zbiór tylko do artykułów
+##sprowadzić imiona i nazwiska w tabeli i w danych bibliotekinauki do alfabetu łacińskiego
+
 
 list_of_people = set([e.lower() for e in gsheet_to_df('1TxqTCsnDmoEBihAT7NjW6Ghb-AJ2F5e1PQwk5F6sR9U', 'Sheet1')['lastName'].to_list() if e and isinstance(e, str)])
 hyphen_people = set([el for sub in [e.split('-') for e in list_of_people if '-' in e] for el in sub])
@@ -38,15 +46,87 @@ disciplines = set([v.get('discipline')[0] for k,v in ok_records.items() if v.get
 
 with open('data/bn_records.pickle', 'wb') as file:
     pickle.dump(ok_records, file)
+#%%
+
+people = gsheet_to_df('1TxqTCsnDmoEBihAT7NjW6Ghb-AJ2F5e1PQwk5F6sR9U', 'Sheet1')[['id', 'firstName', 'middleName', 'lastName']].set_index('id')
+people = people.loc[people['lastName'].notnull()].to_dict(orient='index')
+last_names = {}
+for k,v in people.items():
+    last_names.setdefault(v.get('lastName').lower(), []).append({'id': k, 'firstName': v.get('firstName').lower()})
+    
+last_names_hyphen = {}
+for k,v in last_names.items():
+    if '-' in k:
+        k = k.split('-')
+        for e in k:
+            last_names_hyphen.setdefault(e.strip(), []).extend(v)
+dir(list())
 
 with open('data/bn_records.pickle', 'rb') as file:
     ok_records = pickle.load(file)
 
+ok_records_ok_people = {}    
+for k,v in tqdm(ok_records.items()):
+    # k = 'oai:bibliotekanauki.pl:113793'
+    # v = ok_records.get(k)
+    soup = BeautifulSoup(v.get('record'), 'xml')
+    languages = list(soup.find('article-title').attrs.values())
+    if 'pl' in languages:
+        p = soup.find_all('contrib')
+        for e in p:
+            # e = p[0]
+            last_name = e.find('surname').text.lower()
+            try:
+                first_name = e.find('given-names').text.lower()
+                person_matches = last_names.get(last_name)
+                if not person_matches:
+                    person_matches = last_names_hyphen.get(last_name)
+                if person_matches:
+                    for m in person_matches:
+                        # m = person_matches[0]
+                        ratio = lev.ratio(first_name, m.get('firstName'))
+                        if ratio > 0.7:
+                            ok_records_ok_people.update({k:{'discipline': v.get('discipline'),
+                                                            'article_title': soup.find('article-title').text,
+                                                            'person_from_article': f'{first_name} {last_name}',
+                                                            'person_id': m.get('id'),
+                                                            'ratio': ratio}})
+            except AttributeError:
+                pass
+                
+
+  
+df = pd.DataFrame().from_dict(ok_records_ok_people, orient='index')
+df.to_excel('data/hity z biblitekinauki.xlsx')
+        
+wrong_records = gsheet_to_df('1TxqTCsnDmoEBihAT7NjW6Ghb-AJ2F5e1PQwk5F6sR9U', 'hity z bibliotekinauki')
+wrong_records = wrong_records.loc[wrong_records['BŁĄD'] == 'True']['id tekstu'].to_list()
+ok_records_ok_people = {k:v for k,v in ok_records_ok_people.items() if k not in wrong_records}
+
+#harvesting pdfs
+ok_records_to_harvest = {k:v for k,v in ok_records.items() if k in ok_records_ok_people.keys()}
+
+def harvest_bibliotekanauki(record):
+    k, v = record
+    soup = BeautifulSoup(v['record'], 'xml')
+    uri = soup.find('self-uri')['xlink:href']
+    with open(f"data/bibliotekanauki/{k.split(':')[-1]}.pdf", 'wb') as file:
+        content = requests.get(uri, stream=True).content
+        file.write(content)
+
+with ThreadPoolExecutor() as executor:
+    list(tqdm(executor.map(harvest_bibliotekanauki, ok_records_to_harvest.items()), total=len(ok_records_to_harvest)))
+
+
+print(p)        
+print(last_name)
+print(first_name)
+
 humanities = {k:v for k,v in ok_records.items() if 'Humanities' in v.get('discipline')}
 
-
+## UWAGA!!! ------ czy powinniśmy zbudować korpus?
         
-
+#%%
 s = BeautifulSoup(ok_records[1], 'xml')
 
 s.find('identifier').text
