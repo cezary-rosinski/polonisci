@@ -60,7 +60,6 @@ for k,v in last_names.items():
         k = k.split('-')
         for e in k:
             last_names_hyphen.setdefault(e.strip(), []).extend(v)
-dir(list())
 
 with open('data/bn_records.pickle', 'rb') as file:
     ok_records = pickle.load(file)
@@ -69,35 +68,36 @@ ok_records_ok_people = {}
 for k,v in tqdm(ok_records.items()):
     # k = 'oai:bibliotekanauki.pl:113793'
     # v = ok_records.get(k)
-    soup = BeautifulSoup(v.get('record'), 'xml')
-    languages = list(soup.find('article-title').attrs.values())
-    if 'pl' in languages:
-        p = soup.find_all('contrib')
-        for e in p:
-            # e = p[0]
-            last_name = e.find('surname').text.lower()
-            try:
-                first_name = e.find('given-names').text.lower()
-                person_matches = last_names.get(last_name)
-                if not person_matches:
-                    person_matches = last_names_hyphen.get(last_name)
-                if person_matches:
-                    for m in person_matches:
-                        # m = person_matches[0]
-                        ratio = lev.ratio(first_name, m.get('firstName'))
-                        if ratio > 0.7:
-                            ok_records_ok_people.update({k:{'discipline': v.get('discipline'),
-                                                            'article_title': soup.find('article-title').text,
-                                                            'person_from_article': f'{first_name} {last_name}',
-                                                            'person_id': m.get('id'),
-                                                            'ratio': ratio}})
-            except AttributeError:
-                pass
+    if v.get('discipline') == ['Humanities']:
+        soup = BeautifulSoup(v.get('record'), 'xml')
+        languages = list(soup.find('article-title').attrs.values())
+        if 'pl' in languages:
+            p = soup.find_all('contrib')
+            for e in p:
+                # e = p[0]
+                last_name = e.find('surname').text.lower()
+                try:
+                    first_name = e.find('given-names').text.lower()
+                    person_matches = last_names.get(last_name)
+                    if not person_matches:
+                        person_matches = last_names_hyphen.get(last_name)
+                    if person_matches:
+                        for m in person_matches:
+                            # m = person_matches[0]
+                            ratio = lev.ratio(first_name, m.get('firstName'))
+                            if ratio > 0.7:
+                                ok_records_ok_people.update({k:{'discipline': v.get('discipline'),
+                                                                'article_title': soup.find('article-title').text,
+                                                                'person_from_article': f'{first_name} {last_name}',
+                                                                'person_id': m.get('id'),
+                                                                'ratio': ratio}})
+                except AttributeError:
+                    pass
                 
 
   
-df = pd.DataFrame().from_dict(ok_records_ok_people, orient='index')
-df.to_excel('data/hity z biblitekinauki.xlsx')
+# df = pd.DataFrame().from_dict(ok_records_ok_people, orient='index')
+# df.to_excel('data/hity z biblitekinauki.xlsx')
         
 wrong_records = gsheet_to_df('1TxqTCsnDmoEBihAT7NjW6Ghb-AJ2F5e1PQwk5F6sR9U', 'hity z bibliotekinauki')
 wrong_records = wrong_records.loc[wrong_records['BŁĄD'] == 'True']['id tekstu'].to_list()
@@ -118,11 +118,7 @@ with ThreadPoolExecutor() as executor:
     list(tqdm(executor.map(harvest_bibliotekanauki, ok_records_to_harvest.items()), total=len(ok_records_to_harvest)))
 
 
-print(p)        
-print(last_name)
-print(first_name)
-
-humanities = {k:v for k,v in ok_records.items() if 'Humanities' in v.get('discipline')}
+# humanities = {k:v for k,v in ok_records.items() if 'Humanities' in v.get('discipline')}
 
 ## UWAGA!!! ------ czy powinniśmy zbudować korpus?
         
