@@ -9,7 +9,9 @@ import Levenshtein as lev
 import pandas as pd
 import requests
 from concurrent.futures import ThreadPoolExecutor
-
+import os
+from glob import glob
+import regex as re
 
 #%%
 
@@ -104,7 +106,20 @@ wrong_records = wrong_records.loc[wrong_records['BŁĄD'] == 'True']['id tekstu'
 ok_records_ok_people = {k:v for k,v in ok_records_ok_people.items() if k not in wrong_records}
 
 #harvesting pdfs
-ok_records_to_harvest = {k:v for k,v in ok_records.items() if k in ok_records_ok_people.keys()}
+ok_records_prep = {k:v for k,v in ok_records.items() if k in ok_records_ok_people.keys()}
+
+ok_records_to_harvest = {}
+ok_records_to_harvest_abstracts = {}
+for k,v in tqdm(ok_records_prep.items()):
+    # k = 'oai:bibliotekanauki.pl:345026'
+    # v = ok_records.get(k)
+    soup = BeautifulSoup(v.get('record'), 'xml')
+    if soup.find('article-title').attrs.get('xml:lang') == 'pl':
+        ok_records_to_harvest.update({k:v})
+    if soup.find('abstract'):
+        if soup.find('abstract').attrs.get('xml:lang') == 'pl':
+            ok_records_to_harvest_abstracts.update({k:v})
+    
 
 def harvest_bibliotekanauki(record):
     k, v = record
@@ -116,11 +131,87 @@ def harvest_bibliotekanauki(record):
 
 with ThreadPoolExecutor() as executor:
     list(tqdm(executor.map(harvest_bibliotekanauki, ok_records_to_harvest.items()), total=len(ok_records_to_harvest)))
-
-
+    
+abstract_pdfs = [f"C:\\Users\\Cezary\\Documents\\polonisci\\data\\bibliotekanauki\\pdf\\abstract_pl\\{k.split(':')[-1]}.pdf" for k,v in ok_records_to_harvest_abstracts.items()]
+abstract_hocrs = [f"C:\\Users\\Cezary\\Documents\\polonisci\\data\\bibliotekanauki\\hOCR\\abstract_pl\\{k.split(':')[-1]}.alto.hOCR" for k,v in ok_records_to_harvest_abstracts.items()]
+path = r'C:\Users\Cezary\Documents\polonisci\data\bibliotekanauki\pdf\abstract_pl/'
+path2 = r'C:\Users\Cezary\Documents\polonisci\data\bibliotekanauki\hOCR\abstract_pl/'
+files_pdf_all = [f for f in glob(f"{path}*", recursive=True)]
+files_hocr_all = [f for f in glob(f"{path2}*", recursive=True)]
+[os.remove(e) for e in files_pdf_all if e not in abstract_pdfs]
+[os.remove(e) for e in files_hocr_all if e not in abstract_hocrs]
 # humanities = {k:v for k,v in ok_records.items() if 'Humanities' in v.get('discipline')}
 
-## UWAGA!!! ------ czy powinniśmy zbudować korpus?
+#%% automatyczna segmentacja
+
+#abstrakty
+path = r'C:\Users\Cezary\Documents\polonisci\data\bibliotekanauki\hOCR\text_pl/'
+files_hocr = [f for f in glob(f"{path}*", recursive=True)]
+
+url = 'https://converter-hocr.services.clarin-pl.eu/convert/'
+
+headers = {
+    'accept': 'application/json',
+    # requests won't add a boundary if this header is set when you pass files=
+    # 'Content-Type': 'multipart/form-data',
+}
+
+params = {
+    # 'class_name': 'normal',
+    'html': 'false',
+    'word_transfer': 'true',
+}
+
+def segment_hocr(file):
+# for file in tqdm(files_hocr):
+    # file = files_hocr[1]
+    files = {
+        # 'file': open('bibliotekanauki_87574.alto.hOCR', 'rb'),
+        'file': open(file, 'rb')}
+    file_name = re.findall('(\d+)(?=\.)', file)[0]
+
+    response = requests.post(url, params=params, headers=headers, files=files)
+
+    soup = BeautifulSoup(response.content, 'xml')
+    try:
+        results.update({file_name: {'abstract_pl': soup.find("div", {"class": "abstract"}).text.strip()}})
+    except AttributeError:
+        results.update({file_name: {'abstract_pl': None}})
+        
+    try:
+        results[file_name].update({'text': '/n'.join([e.text.strip() for e in soup.find_all("div", {"class": "normal"})])})
+    except AttributeError:
+        results[file_name].update({'text': None})
+        
+results = {}
+with ThreadPoolExecutor() as executor:
+    list(tqdm(executor.map(segment_hocr,files_hocr), total=len(files_hocr)))
+
+with open('data/bn_records_po_segmentacji.pickle', 'wb') as file:
+    pickle.dump(results, file)
+
+!!!tutaj
+
+test = '/n'.join([e.text.strip() for e in results.get(list(results.keys())[0]).get('text')])
+
+results.get(list(results.keys())[0]).get('abstract_pl')
+
+abstrakty = {k:v.get('abstract_pl') for k,v in results.items()}
+# test = set([v.split(' ')[0] for k,v in abstrakty.items() if v])
+
+# ['Abstrakt:', 'ABSTRAKT', 'Abstrakt', 'Abstrakt.', 'STRESZCZENIE', 'Streszczenie', 'Streszczenie.', 'Streszczenie:']
+
+abstrakty = {k:re.sub('^Abstrakt\:|^ABSTRAKT|^Abstrakt\.|^Abstrakt|^STRESZCZENIE|^Streszczenie\:|^Streszczenie\.|^Streszczenie', '', v).strip().lstrip('.').lstrip(':').lstrip('|').strip() if v else v for k,v in abstrakty.items()}
+
+path = r'C:\Users\Cezary\Downloads\clarin_bibliotekanauki_hOCR\abstrakty/'
+
+for k,v in abstrakty.items():
+    if v:
+        with open(f"{path}{k}.txt", 'wt', encoding='utf-8') as f:
+            f.write(v)
+
+
+#pełne teksty
         
 #%%
 s = BeautifulSoup(ok_records[1], 'xml')
