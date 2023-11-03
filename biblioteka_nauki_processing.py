@@ -190,25 +190,28 @@ with ThreadPoolExecutor() as executor:
 with open('data/bn_records_po_segmentacji.pickle', 'wb') as file:
     pickle.dump(results, file)
 
-!!!tutaj
+#%% finalne pliki txt
 
-test = '/n'.join([e.text.strip() for e in results.get(list(results.keys())[0]).get('text')])
+with open('data/bn_records_po_segmentacji.pickle', 'rb') as file:
+    results = pickle.load(file)
 
-results.get(list(results.keys())[0]).get('abstract_pl')
-
-abstrakty = {k:v.get('abstract_pl') for k,v in results.items()}
-# test = set([v.split(' ')[0] for k,v in abstrakty.items() if v])
-
-# ['Abstrakt:', 'ABSTRAKT', 'Abstrakt', 'Abstrakt.', 'STRESZCZENIE', 'Streszczenie', 'Streszczenie.', 'Streszczenie:']
+abstrakty = {k:v.get('abstract_pl') for k,v in results.items() if v.get('abstract_pl')}
 
 abstrakty = {k:re.sub('^Abstrakt\:|^ABSTRAKT|^Abstrakt\.|^Abstrakt|^STRESZCZENIE|^Streszczenie\:|^Streszczenie\.|^Streszczenie', '', v).strip().lstrip('.').lstrip(':').lstrip('|').strip() if v else v for k,v in abstrakty.items()}
 
-path = r'C:\Users\Cezary\Downloads\clarin_bibliotekanauki_hOCR\abstrakty/'
+path = r'C:\Users\Cezary\Documents\polonisci\data\bibliotekanauki\txt\abstract_pl/'
 
 for k,v in abstrakty.items():
-    if v:
-        with open(f"{path}{k}.txt", 'wt', encoding='utf-8') as f:
-            f.write(v)
+    with open(f"{path}{k}.txt", 'wt', encoding='utf-8') as f:
+        f.write(v)
+        
+full_text = {k:v.get('text') for k,v in results.items() if v.get('text')}
+
+path = r'C:\Users\Cezary\Documents\polonisci\data\bibliotekanauki\txt\text_pl/'
+
+for k,v in full_text.items():
+    with open(f"{path}{k}.txt", 'wt', encoding='utf-8') as f:
+        f.write(v)
 
 
 #pełne teksty
