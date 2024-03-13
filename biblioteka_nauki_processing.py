@@ -18,14 +18,18 @@ import regex as re
 ##ograniczamy zbiór tylko do artykułów
 ##sprowadzić imiona i nazwiska w tabeli i w danych bibliotekinauki do alfabetu łacińskiego
 
+# list_of_people = set([e.lower() for e in gsheet_to_df('1TxqTCsnDmoEBihAT7NjW6Ghb-AJ2F5e1PQwk5F6sR9U', 'Sheet1')['lastName'].to_list() if e and isinstance(e, str)])
+# hyphen_people = set([el for sub in [e.split('-') for e in list_of_people if '-' in e] for el in sub])
+# list_of_people = list_of_people | hyphen_people
+polonisci_df = gsheet_to_df('1c-qp8zJUvDaz7bs8YspX63MxEdSB_WL43ffDB-f0S8Y', 'Arkusz1')
 
-list_of_people = set([e.lower() for e in gsheet_to_df('1TxqTCsnDmoEBihAT7NjW6Ghb-AJ2F5e1PQwk5F6sR9U', 'Sheet1')['lastName'].to_list() if e and isinstance(e, str)])
+list_of_people = set([e.lower() for e in polonisci_df['nazwisko'].to_list() if e and isinstance(e, str)])
 hyphen_people = set([el for sub in [e.split('-') for e in list_of_people if '-' in e] for el in sub])
 list_of_people = list_of_people | hyphen_people
 
-json_path = r"C:\Users\Cezary\Documents\polonisci\data\BibNauk_dump_2022_10_14.json"
+json_path = r"C:\Users\Cezary\Documents\polonisci\data\BibNauk_dump_2022_10_14.json" # 507k rekordów/ 11 minut
 
-ok_records = {}
+ok_records = {} #103k records
 
 with open(json_path, encoding='utf-8') as jotson:
     bibnau_full_dump = ijson.items(jotson, 'item')
@@ -43,8 +47,59 @@ with open(json_path, encoding='utf-8') as jotson:
                 ok_records.update({record_id: {'discipline': discipline,
                                                'record': obj}})
         
-   
 disciplines = set([v.get('discipline')[0] for k,v in ok_records.items() if v.get('discipline')])
+
+dict_of_people = {k: dict(zip(['last name', 'names'], v)) for k, v in zip(polonisci_df['id'].to_list(), zip(polonisci_df['nazwisko'].to_list(), polonisci_df['imię'].to_list()))}
+
+#wiele imion
+for k,v in dict_of_people.items():
+    first_name = v.get('names').strip().split(' ')[0]
+    v.update({'first name': first_name})
+    if ' ' in v.get('names').strip():
+        middle_name = v.get('names').split(' ')[1]
+        v.update({'middle name': middle_name})
+        
+#inicjały imienia
+for k,v in dict_of_people.items():
+    first_name_initial = v.get('first name')[0] + '.'
+    v.update({'first name initial': first_name_initial})
+    if 'middle name' in v:
+        name_initials = v.get('first name')[0] + '.' + v.get('middle name')[0] + '.'
+        v.update({'name initials': name_initials})
+    
+#wszystkie sposoby nazewnictwa wyszukać w subsecie bibliotekinauki
+#TUTAJ
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+for k,v in tqdm(ok_records.items()):
+    record = v.get('record')
+    soup = BeautifulSoup(record, 'xml')
+    authors = soup.find_all('contrib')
+    authors_list = []
+    for author in authors:
+        if author.find('given-names') and author.find('surname'):
+            last_name = author.find('surname').text.lower()
+            first_name = author.find('given-names').text.lower()
+            role = author.find('role').text.lower()
+            if role == 'author':
+                temp_dict = {'last name': last_name,
+                             'first_name': first_name}
+                authors_list.append(temp_dict)
+    v.update({'authors': authors_list})
+            
 
 with open('data/bn_records.pickle', 'wb') as file:
     pickle.dump(ok_records, file)
