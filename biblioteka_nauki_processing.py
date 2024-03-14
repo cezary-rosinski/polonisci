@@ -12,8 +12,13 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from glob import glob
 import regex as re
+from copy import deepcopy
+from langdetect import detect_langs
+from PyPDF2 import PdfReader
+from PyPDF2.errors import DependencyError, EmptyFileError, PdfReadError
+from langdetect.detector import LangDetectException
 
-#%%
+#%% przygotowanie listy osób
 
 ##ograniczamy zbiór tylko do artykułów
 ##sprowadzić imiona i nazwiska w tabeli i w danych bibliotekinauki do alfabetu łacińskiego
@@ -22,32 +27,6 @@ import regex as re
 # hyphen_people = set([el for sub in [e.split('-') for e in list_of_people if '-' in e] for el in sub])
 # list_of_people = list_of_people | hyphen_people
 polonisci_df = gsheet_to_df('1c-qp8zJUvDaz7bs8YspX63MxEdSB_WL43ffDB-f0S8Y', 'Arkusz1')
-
-list_of_people = set([e.lower() for e in polonisci_df['nazwisko'].to_list() if e and isinstance(e, str)])
-hyphen_people = set([el for sub in [e.split('-') for e in list_of_people if '-' in e] for el in sub])
-list_of_people = list_of_people | hyphen_people
-
-json_path = r"C:\Users\Cezary\Documents\polonisci\data\BibNauk_dump_2022_10_14.json" # 507k rekordów/ 11 minut
-
-ok_records = {} #103k records
-
-with open(json_path, encoding='utf-8') as jotson:
-    bibnau_full_dump = ijson.items(jotson, 'item')
-    for obj in tqdm(bibnau_full_dump):
-        soup = BeautifulSoup(obj, 'xml')
-        record_id = soup.find('identifier').text
-        discipline = soup.find_all('article-categories')
-        try:
-            discipline = [e.find('subject').text for e in discipline]
-        except AttributeError:
-            discipline = []
-        t = soup.find_all('contrib')
-        for contrib in t:
-            if contrib.find('role').text == 'author' and contrib.find('surname').text.lower() in list_of_people:
-                ok_records.update({record_id: {'discipline': discipline,
-                                               'record': obj}})
-        
-disciplines = set([v.get('discipline')[0] for k,v in ok_records.items() if v.get('discipline')])
 
 dict_of_people = {k: dict(zip(['last name', 'names'], v)) for k, v in zip(polonisci_df['id'].to_list(), zip(polonisci_df['nazwisko'].to_list(), polonisci_df['imię'].to_list()))}
 
@@ -66,25 +45,158 @@ for k,v in dict_of_people.items():
     if 'middle name' in v:
         name_initials = v.get('first name')[0] + '.' + v.get('middle name')[0] + '.'
         v.update({'name initials': name_initials})
+        second_name_initial = v.get('middle name')[0] + '.'
+        v.update({'middle name initial': second_name_initial})
+        
+#dwa nazwiska
+for k,v in dict_of_people.items():
+    last_name = v.get('last name')
+    if '-' in last_name:
+        last_name_0, last_name_1 = last_name.split('-')
+        v.update({'last name first part': last_name_0,
+                  'last name second part': last_name_1})
+
+
+# Marta Renata | Zimniak-Hałajko #1
+# Marta R. | Zimniak-Hałajko #2
+# Marta | Zimniak-Hałajko #3
+# M.R. | Zimniak-Hałajko #4
+# M. | Zimniak-Hałajko #5
+# Marta Renata | Zimniak #6
+# Marta R. | Zimniak #7
+# Marta | Zimniak #8
+# M.R. | Zimniak #9
+# M. | Zimniak #10
+# Marta Renata | Hałajko #11
+# Marta R. | Hałajko #12
+# Marta | Hałajko #13
+# M.R. | Hałajko #14
+# M. | Hałajko #15
+
+test = dict_of_people.get('1565')
+def name_variant_1(person):
+    if ' ' in person.get('names'):
+        name_variants.append({'first': person.get('names'),
+                              'last': person.get('last name')})
+def name_variant_2(person):
+    if 'middle name initial' in person:
+        name_variants.append({'first': person.get('first name') + ' ' + person.get('middle name initial'),
+                                                  'last': person.get('last name')})    
+def name_variant_3(person):
+    name_variants.append({'first': person.get('first name'),
+                          'last': person.get('last name')})
+
+def name_variant_4(person):
+    if 'name initials' in person:
+        name_variants.append({'first': person.get('name initials'),
+                              'last': person.get('last name')})    
+def name_variant_5(person):
+    if 'first name initial' in person:
+        name_variants.append({'first': person.get('first name initial'),
+                              'last': person.get('last name')})    
+def name_variant_6(person):
+    if ' ' in person.get('names') and '-' in person.get('last name'):
+        name_variants.append({'first': person.get('names'),
+                              'last': person.get('last name first part')})
+
+def name_variant_7(person):
+    if 'middle name initial' in person and '-' in person.get('last name'):
+        name_variants.append({'first': person.get('first name') + ' ' + person.get('middle name initial'),
+                              'last': person.get('last name first part')})    
+def name_variant_8(person):
+    if '-' in person.get('last name'):
+        name_variants.append({'first': person.get('first name'),
+                              'last': person.get('last name first part')})    
+def name_variant_9(person):
+    if 'name initials' in person and '-' in person.get('last name'):
+        name_variants.append({'first': person.get('name initials'),
+                              'last': person.get('last name first part')})    
+def name_variant_10(person):
+    if 'first name initial' in person and '-' in person.get('last name'):
+        name_variants.append({'first': person.get('first name initial'),
+                              'last': person.get('last name first part')})
+def name_variant_11(person):
+    if ' ' in person.get('names') and '-' in person.get('last name'):
+        name_variants.append({'first': person.get('names'),
+                              'last': person.get('last name second part')})
+def name_variant_12(person):
+    if 'middle name initial' in person and '-' in person.get('last name'):
+        name_variants.append({'first': person.get('first name') + ' ' + person.get('middle name initial'),
+                              'last': person.get('last name second part')})
+def name_variant_13(person):
+    if '-' in person.get('last name'):
+        name_variants.append({'first': person.get('first name'),
+                              'last': person.get('last name second part')})
+def name_variant_14(person):
+    if 'name initials' in person and '-' in person.get('last name'):
+        name_variants.append({'first': person.get('name initials'),
+                              'last': person.get('last name second part')})
+def name_variant_15(person):
+    if 'first name initial' in person and '-' in person.get('last name'):
+        name_variants.append({'first': person.get('first name initial'),
+                              'last': person.get('last name second part')})
+     
+def generate_variant_names(person):   
+    name_variant_1(person)
+    name_variant_2(person)
+    name_variant_3(person)
+    name_variant_4(person)
+    name_variant_5(person)
+    name_variant_6(person)
+    name_variant_7(person)
+    name_variant_8(person)
+    name_variant_9(person)
+    name_variant_10(person)
+    name_variant_11(person)
+    name_variant_12(person)
+    name_variant_13(person)
+    name_variant_14(person)
+    name_variant_15(person)
+
+    return name_variants
+
+name_variants = []
+all_names = [[{k:v.lower() for k,v in el.items()} for el in generate_variant_names(dict_of_people.get(e))] for e in dict_of_people][-1]
+all_names_tuples = set([tuple(e.values()) for e in all_names])          
+
+with open('data/bn_polonisci_all_people.pickle', 'wb') as file:
+    pickle.dump(all_names_tuples, file)
     
-#wszystkie sposoby nazewnictwa wyszukać w subsecie bibliotekinauki
-#TUTAJ
+#%% selekcja z biblioteki nauki na podstawie listy osób
+with open('data/bn_polonisci_all_people.pickle', 'rb') as file:
+    all_names_tuples = pickle.load(file)
+all_names_tuples = set([(e[-1], e[0]) for e in all_names_tuples])
+last_names = set([e[0] for e in all_names_tuples])
+    
+json_path = r"C:\Users\Cezary\Documents\polonisci\data\BibNauk_dump_2022_10_14.json" # 507k rekordów/ 11 minut
 
+ok_records = {} #103k records
 
+with open(json_path, encoding='utf-8') as jotson:
+    bibnau_full_dump = ijson.items(jotson, 'item')
+    for obj in tqdm(bibnau_full_dump):
+        soup = BeautifulSoup(obj, 'xml')
+        record_id = soup.find('identifier').text
+        discipline = soup.find_all('article-categories')
+        try:
+            discipline = [e.find('subject').text for e in discipline]
+        except AttributeError:
+            discipline = []
+        t = soup.find_all('contrib')
+        for contrib in t:
+            if contrib.find('role').text == 'author' and contrib.find('surname').text.lower() in last_names:
+                ok_records.update({record_id: {'discipline': discipline,
+                                               'record': obj}})
 
+with open('data/bn_ok_records.pickle', 'wb') as file:
+    pickle.dump(ok_records, file)    
 
+with open('data/bn_ok_records.pickle', 'rb') as file:
+    ok_records = pickle.load(file)    
+# disciplines = set([v.get('discipline')[0] for k,v in ok_records.items() if v.get('discipline')])
+ok_records_with_authors = deepcopy(ok_records)
 
-
-
-
-
-
-
-
-
-
-
-for k,v in tqdm(ok_records.items()):
+for k,v in tqdm(ok_records_with_authors.items()):
     record = v.get('record')
     soup = BeautifulSoup(record, 'xml')
     authors = soup.find_all('contrib')
@@ -99,11 +211,99 @@ for k,v in tqdm(ok_records.items()):
                              'first_name': first_name}
                 authors_list.append(temp_dict)
     v.update({'authors': authors_list})
-            
+    
+selected_records = deepcopy(ok_records_with_authors)
+for k,v in tqdm(selected_records.items()):
+    # k = list(ok_records_with_authors.keys())[0]
+    # v = ok_records_with_authors.get(k)
+    authors = [tuple(e.values()) for e in v.get('authors')]
+    authors_found = []
+    for author in authors:
+        if author in all_names_tuples:
+            authors_found.append(author)
+    v.update({'correct authors': authors_found})
 
-with open('data/bn_records.pickle', 'wb') as file:
-    pickle.dump(ok_records, file)
-#%%
+selected_records = {k:v for k,v in selected_records.items() if v.get('correct authors')}
+
+with open('data/bn_selected_records.pickle', 'wb') as file:
+    pickle.dump(selected_records, file)    
+
+#%% wydobyć pdfy, zmienić na txt, sprawdzić język tekstu
+with open('data/bn_selected_records.pickle', 'rb') as file:
+    selected_records = pickle.load(file)
+#pdfy
+def harvest_bibliotekanauki(record):
+    k, v = record
+    soup = BeautifulSoup(v['record'], 'xml')
+    uri = soup.find('self-uri')['xlink:href']
+    with open(f"data/bibliotekanauki/pdf/{k.split(':')[-1]}.pdf", 'wb') as file:
+        content = requests.get(uri, stream=True).content
+        file.write(content)
+
+with ThreadPoolExecutor() as executor:
+    list(tqdm(executor.map(harvest_bibliotekanauki, selected_records.items()), total=len(selected_records)))
+
+#pdf to txt
+path = r"C:\Users\Cezary\Documents\polonisci\data\bibliotekanauki\pdfs/"
+pdf_files = [f for f in glob(f"{path}*", recursive=True)]
+
+selected_polish_records_ids = []
+for pdf_file in tqdm(pdf_files):
+# for pdf_file in tqdm(pdf_files[pdf_files.index(pdf_file):]):
+    record_id = pdf_file.split('\\')[-1].split('.')[0]
+    
+    try:
+        reader = PdfReader(pdf_file)
+        extracted_text = '/n'.join([e.extract_text() for e in reader.pages])
+
+        #language detection
+
+        lang = max(detect_langs(extracted_text), key=lambda x: x.prob).lang
+
+        if lang == 'pl':
+            selected_polish_records_ids.append(record_id)
+
+    except (DependencyError, LangDetectException, EmptyFileError, PdfReadError, KeyError):
+        pass
+        
+#ZAPISAĆ IDENTYFIKATORY
+
+with open('data/bn_selected_polish_records_ids.pickle', 'wb') as file:
+    pickle.dump(selected_polish_records_ids, file)  
+
+#%% identyfikatory PL
+with open('data/bn_selected_polish_records_ids.pickle', 'rb') as file:
+    selected_polish_records_ids = pickle.load(file)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#%% STARE
 
 people = gsheet_to_df('1TxqTCsnDmoEBihAT7NjW6Ghb-AJ2F5e1PQwk5F6sR9U', 'Sheet1')[['id', 'firstName', 'middleName', 'lastName']].set_index('id')
 people = people.loc[people['lastName'].notnull()].to_dict(orient='index')
