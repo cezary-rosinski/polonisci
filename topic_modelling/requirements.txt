@@ -1,0 +1,9 @@
+pandas
+scikit-learn
+bertopic
+umap-learn
+spacy
+tqdm
+nltk
+sentence-transformers
+pl_core_news_sm
