@@ -8,6 +8,8 @@ import re
 import nltk
 from nltk.corpus import stopwords
 from sentence_transformers import SentenceTransformer
+import pickle
+from datasets import Dataset
 
 
 def preprocess_text(text):
@@ -20,6 +22,15 @@ def preprocess_text(text):
 def split_text(text, max_length=100):
     words = text.split()
     return [' '.join(words[i:i + max_length]) for i in range(0, len(words), max_length)]
+
+
+file_path = '/content/drive/MyDrive/Granty, współpraca naukowa/polonisci/full/polonisci_text_abstract.pickle'
+with open(file_path, 'rb') as file:
+    data = pickle.load(file)
+data_list = [{"id": key, "full_text": value["full text"]} for key, value in data.items()]
+dataset = Dataset.from_dict({"id": [item["id"] for item in data_list], "full_text": [item["full_text"] for item in data_list]})
+texts = dataset["full_text"]
+ids = dataset["id"]
 
 # texts = texts[:100]
 
