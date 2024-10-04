@@ -8,8 +8,40 @@ from tqdm import tqdm
 from lxml.etree import parse, tostring, fromstring
 import pandas as pd
 import json
+import ijson
+from datetime import datetime
+#%% harvestowanie artykułów
+url = 'https://bibliotekanauki.pl/api/oai/articles'
 
-#%%
+articles = []
+
+sickle = Sickle(url)
+records = sickle.ListRecords(metadataPrefix='jats', ignore_deleted=True)
+
+for record in tqdm(records):
+    articles.append(record.raw)
+    
+with open(f'D:/IBL/Biblioteka Nauki/bibliotekanauki_{datetime.today().date()}.json', 'w', encoding='utf-8') as f:
+    json.dump(articles, f, ensure_ascii=False, indent=4)
+
+
+#%% ijson
+large_json = r"D:\IBL\Biblioteka Nauki\poloniści\BibNauk_dump_2022_10_14.json"
+
+counter = 0
+with open(large_json, 'r', encoding='utf-8') as file:
+    # Parse the JSON array items one by one
+    array_items = ijson.items(file, 'item')
+    
+    # Iterate over the JSON array items
+    for item in array_items:
+        # Process each JSON array item as needed
+        counter += 1
+        
+
+
+
+#%% od Nikodema
 
 oai_urls = {
     'articles': 'https://bibliotekanauki.pl/api/oai/articles',
