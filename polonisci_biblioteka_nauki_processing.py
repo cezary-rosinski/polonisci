@@ -168,7 +168,8 @@ with open('data/bn_polonisci_all_people.pickle', 'rb') as file:
 all_names_tuples = set([(e[-1], e[0]) for e in all_names_tuples])
 last_names = set([e[0] for e in all_names_tuples])
     
-json_path = r"C:\Users\Cezary\Documents\polonisci\data\BibNauk_dump_2022_10_14.json" # 507k rekordów/ 11 minut
+# json_path = r"C:\Users\Cezary\Documents\polonisci\data\BibNauk_dump_2022_10_14.json" # 507k rekordów/ 11 minut
+json_path = r"D:\IBL\Biblioteka Nauki\bibliotekanauki_2024-10-05.json" #573k rekordów/ 13 minut
 
 ok_records = {} #103k records
 
@@ -228,9 +229,18 @@ selected_records = {k:v for k,v in selected_records.items() if v.get('correct au
 with open('data/bn_selected_records.pickle', 'wb') as file:
     pickle.dump(selected_records, file)    
 
+#%% wydobycie tylko nowych rekordów
+articles = gsheet_to_df('1Ilaek1uiYyPy4L5x5u4pWlBYOlZQPk1Q05Wcbv5E3jI', 'selekcja polonistów')
+
+articles_ids = set(articles['id'].to_list())
+
+
 #%% wydobyć pdfy, zmienić na txt, sprawdzić język tekstu
 with open('data/bn_selected_records.pickle', 'rb') as file:
     selected_records = pickle.load(file)
+
+selected_records = {k:v for k,v in selected_records.items() if k not in articles_ids}
+    
 #pdfy
 def harvest_bibliotekanauki(record):
     k, v = record
@@ -244,7 +254,7 @@ with ThreadPoolExecutor() as executor:
     list(tqdm(executor.map(harvest_bibliotekanauki, selected_records.items()), total=len(selected_records)))
 
 #pdf to txt
-path = r"C:\Users\Cezary\Documents\polonisci\data\bibliotekanauki\pdfs/"
+path = r"C:\Users\Cezary\Documents\polonisci\data\bibliotekanauki\pdf/"
 pdf_files = [f for f in glob(f"{path}*", recursive=True)]
 
 selected_polish_records_ids = []
